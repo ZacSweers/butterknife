@@ -49,6 +49,7 @@ ext.deps = [
     android: 'com.google.android:android:2.1.2',
     supportv4: 'com.android.support:support-v4:23.3.0',
     supportAnnotations: 'com.android.support:support-annotations:23.3.0',
+    supportAppCompat: 'com.android.support:appcompat-v7:23.3.0',
 
     // Square
     javapoet: 'com.squareup:javapoet:1.6.1',
