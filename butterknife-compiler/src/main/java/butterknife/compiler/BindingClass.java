@@ -1,7 +1,5 @@
 package butterknife.compiler;
 
-import butterknife.internal.ListenerClass;
-import butterknife.internal.ListenerMethod;
 import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.CodeBlock;
@@ -12,6 +10,7 @@ import com.squareup.javapoet.TypeName;
 import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.TypeVariableName;
 import com.squareup.javapoet.WildcardTypeName;
+
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -21,7 +20,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
 import javax.lang.model.element.Modifier;
+
+import butterknife.internal.ListenerClass;
+import butterknife.internal.ListenerMethod;
 
 import static butterknife.compiler.ButterKnifeProcessor.VIEW_TYPE;
 import static java.util.Collections.singletonList;
@@ -39,6 +42,10 @@ final class BindingClass {
   private static final ClassName CONTEXT = ClassName.get("android.content", "Context");
   private static final ClassName RESOURCES = ClassName.get("android.content.res", "Resources");
   private static final ClassName THEME = RESOURCES.nestedClass("Theme");
+  private static final ClassName VECTOR_COMPAT
+      = ClassName.get("android.support.graphics.drawable", "VectorDrawableCompat");
+  private static final ClassName ANIMATED_VECTOR_COMPAT
+      = ClassName.get("android.support.graphics.drawable", "AnimatedVectorDrawableCompat");
   private static final ClassName UNBINDER = ClassName.get("butterknife", "Unbinder");
   private static final ClassName BITMAP_FACTORY =
       ClassName.get("android.graphics", "BitmapFactory");
@@ -49,11 +56,15 @@ final class BindingClass {
   private final Map<FieldCollectionViewBinding, int[]> collectionBindings = new LinkedHashMap<>();
   private final List<FieldBitmapBinding> bitmapBindings = new ArrayList<>();
   private final List<FieldDrawableBinding> drawableBindings = new ArrayList<>();
+  private final List<FieldVectorDrawableBinding> vectorDrawableBindings = new ArrayList<>();
   private final List<FieldResourceBinding> resourceBindings = new ArrayList<>();
   private final boolean isFinal;
   private final TypeName targetTypeName;
   private final ClassName generatedClassName;
   private final ClassName unbinderClassName;
+  private boolean hasResourceBindingsNeedingContext = false;
+  private boolean hasResourceBindingsNeedingRes = false;
+  private boolean hasResourceBindingsNeedingTheme = false;
   private BindingClass parentBinding;
 
   BindingClass(TypeName targetTypeName, ClassName generatedClassName, boolean isFinal) {
@@ -69,6 +80,24 @@ final class BindingClass {
 
   void addDrawable(FieldDrawableBinding binding) {
     drawableBindings.add(binding);
+    hasResourceBindingsNeedingContext = true;
+    hasResourceBindingsNeedingRes = true;
+    hasResourceBindingsNeedingTheme = true;
+  }
+
+  void addVectorDrawable(FieldVectorDrawableBinding binding) {
+    vectorDrawableBindings.add(binding);
+    if (!binding.isCompat()) {
+      hasResourceBindingsNeedingContext = true;
+      hasResourceBindingsNeedingRes = true;
+      hasResourceBindingsNeedingTheme = true;
+    } else {
+      hasResourceBindingsNeedingContext = true;
+      if (!binding.isAnimated()) {
+        hasResourceBindingsNeedingRes = true;
+        hasResourceBindingsNeedingTheme = true;
+      }
+    }
   }
 
   void addField(int id, FieldViewBinding binding) {
@@ -94,6 +123,11 @@ final class BindingClass {
 
   void addResource(FieldResourceBinding binding) {
     resourceBindings.add(binding);
+    if (binding.isThemeable()) {
+      hasResourceBindingsNeedingContext = true;
+      hasResourceBindingsNeedingRes = true;
+      hasResourceBindingsNeedingTheme = true;
+    }
   }
 
   void setParent(BindingClass parent) {
@@ -433,6 +467,25 @@ final class BindingClass {
         result.addCode("\n");
       }
     }
+    if (hasResourceBindings()) {
+      if (hasResourceBindingsNeedingContext) {
+        result.addStatement("$T context = finder.getContext(source)", CONTEXT);
+      }
+      if (hasResourceBindingsNeedingRes) {
+        if (hasResourceBindingsNeedingContext) {
+          result.addStatement("$T res = context.getResources()", RESOURCES);
+        } else {
+          result.addStatement("$T res = finder.getContext(source).getResources()", RESOURCES);
+        }
+      }
+      if (hasResourceBindingsNeedingTheme) {
+        if (hasResourceBindingsNeedingContext) {
+          result.addStatement("$T theme = context.getTheme()", THEME);
+        } else {
+          result.addStatement("$T theme = finder.getContext(source).getTheme()", THEME);
+        }
+      }
+    }
 
     if (hasResourceBindings()) {
       for (FieldBitmapBinding binding : bitmapBindings) {
@@ -448,6 +501,24 @@ final class BindingClass {
         } else {
           result.addStatement("target.$L = $T.getDrawable(res, theme, $L)", binding.getName(),
               UTILS, binding.getId());
+        }
+      }
+
+      for (FieldVectorDrawableBinding binding : vectorDrawableBindings) {
+        boolean isCompat = binding.isCompat();
+        boolean isAnimated = binding.isAnimated();
+        ClassName targetType = binding.getClassName();
+        if (!isCompat) {
+          result.addStatement("target.$L = ($T) $T.getDrawable(res, theme, $L)", binding.getName(),
+              targetType, UTILS, binding.getId());
+        } else {
+          if (isAnimated) {
+            result.addStatement("target.$L = $T.create(context, $L)", binding.getName(),
+                ANIMATED_VECTOR_COMPAT, binding.getId());
+          } else {
+            result.addStatement("target.$L = $T.create(res, $L, theme)", binding.getName(),
+                VECTOR_COMPAT, binding.getId());
+          }
         }
       }
 
@@ -745,7 +816,10 @@ final class BindingClass {
 
   /** True when this type's bindings require Android's {@code Resources}. */
   private boolean hasResourceBindings() {
-    return !(bitmapBindings.isEmpty() && drawableBindings.isEmpty() && resourceBindings.isEmpty());
+    return !(bitmapBindings.isEmpty()
+        && drawableBindings.isEmpty()
+        && resourceBindings.isEmpty()
+        && vectorDrawableBindings.isEmpty());
   }
 
   /** True when this type's resource bindings require Android's {@code Theme}. */

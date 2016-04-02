@@ -13,6 +13,7 @@ import static com.google.common.truth.Truth.assertThat;
 
 @RunWith(RobolectricGradleTestRunner.class)
 @Config(
+    sdk = 16,
     manifest = "src/main/AndroidManifest.xml",
     constants = BuildConfig.class
 )

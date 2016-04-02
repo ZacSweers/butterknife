@@ -1,6 +1,7 @@
 package butterknife.compiler;
 
 import butterknife.BindArray;
+import butterknife.BindAVD;
 import butterknife.BindBitmap;
 import butterknife.BindBool;
 import butterknife.BindColor;
@@ -8,6 +9,7 @@ import butterknife.BindDimen;
 import butterknife.BindDrawable;
 import butterknife.BindInt;
 import butterknife.BindString;
+import butterknife.BindVD;
 import butterknife.BindView;
 import butterknife.BindViews;
 import butterknife.OnCheckedChanged;
@@ -77,6 +79,13 @@ public final class ButterKnifeProcessor extends AbstractProcessor {
   private static final String COLOR_STATE_LIST_TYPE = "android.content.res.ColorStateList";
   private static final String BITMAP_TYPE = "android.graphics.Bitmap";
   private static final String DRAWABLE_TYPE = "android.graphics.drawable.Drawable";
+  private static final String VECTOR_DRAWABLE_TYPE = "android.graphics.drawable.VectorDrawable";
+  private static final String VECTOR_DRAWABLE_COMPAT_TYPE
+      = "android.support.graphics.drawable.VectorDrawableCompat";
+  private static final String ANIMATED_VECTOR_DRAWABLE_TYPE
+      = "android.graphics.drawable.AnimatedVectorDrawable";
+  private static final String ANIMATED_VECTOR_DRAWABLE_COMPAT_TYPE
+      = "android.support.graphics.drawable.AnimatedVectorDrawableCompat";
   private static final String TYPED_ARRAY_TYPE = "android.content.res.TypedArray";
   private static final String NULLABLE_ANNOTATION_NAME = "Nullable";
   private static final String STRING_TYPE = "java.lang.String";
@@ -120,6 +129,8 @@ public final class ButterKnifeProcessor extends AbstractProcessor {
     types.add(BindString.class.getCanonicalName());
     types.add(BindView.class.getCanonicalName());
     types.add(BindViews.class.getCanonicalName());
+    types.add(BindVD.class.getCanonicalName());
+    types.add(BindAVD.class.getCanonicalName());
 
     for (Class<? extends Annotation> listener : LISTENERS) {
       types.add(listener.getCanonicalName());
@@ -207,6 +218,26 @@ public final class ButterKnifeProcessor extends AbstractProcessor {
         parseResourceDrawable(element, targetClassMap, erasedTargetNames);
       } catch (Exception e) {
         logParsingError(element, BindDrawable.class, e);
+      }
+    }
+
+    // Process each @BindDrawable element.
+    for (Element element : env.getElementsAnnotatedWith(BindVD.class)) {
+      if (!SuperficialValidation.validateElement(element)) continue;
+      try {
+        parseResourceVectorDrawable(element, targetClassMap, erasedTargetNames);
+      } catch (Exception e) {
+        logParsingError(element, BindVD.class, e);
+      }
+    }
+
+    // Process each @BindDrawable element.
+    for (Element element : env.getElementsAnnotatedWith(BindAVD.class)) {
+      if (!SuperficialValidation.validateElement(element)) continue;
+      try {
+        parseResourceAnimatedVectorDrawable(element, targetClassMap, erasedTargetNames);
+      } catch (Exception e) {
+        logParsingError(element, BindAVD.class, e);
       }
     }
 
@@ -626,6 +657,81 @@ public final class ButterKnifeProcessor extends AbstractProcessor {
     BindingClass bindingClass = getOrCreateTargetClass(targetClassMap, enclosingElement);
     FieldDrawableBinding binding = new FieldDrawableBinding(id, name, tint);
     bindingClass.addDrawable(binding);
+
+    erasedTargetNames.add(enclosingElement);
+  }
+
+  private void parseResourceVectorDrawable(
+      Element element,
+      Map<TypeElement, BindingClass> targetClassMap,
+      Set<TypeElement> erasedTargetNames) {
+    boolean hasError = false;
+    TypeElement enclosingElement = (TypeElement) element.getEnclosingElement();
+
+    // Verify that the target type is Drawable.
+    String typeString = element.asType().toString();
+    if (!VECTOR_DRAWABLE_TYPE.equals(typeString)
+        && !VECTOR_DRAWABLE_COMPAT_TYPE.equals(typeString)) {
+      error(element, "@%s field type must be 'VectorDrawable' or 'VectorDrawableCompat'. (%s.%s)",
+          BindVD.class.getSimpleName(), enclosingElement.getQualifiedName(),
+          element.getSimpleName());
+      hasError = true;
+    }
+
+    // Verify common generated code restrictions.
+    hasError |= isInaccessibleViaGeneratedCode(BindVD.class, "fields", element);
+    hasError |= isBindingInWrongPackage(BindVD.class, element);
+
+    if (hasError) {
+      return;
+    }
+
+    // Assemble information on the field.
+    String name = element.getSimpleName().toString();
+    int id = element.getAnnotation(BindVD.class).value();
+
+    BindingClass bindingClass = getOrCreateTargetClass(targetClassMap, enclosingElement);
+    FieldVectorDrawableBinding binding
+        = new FieldVectorDrawableBinding(id, name, typeString, false);
+    bindingClass.addVectorDrawable(binding);
+
+    erasedTargetNames.add(enclosingElement);
+  }
+
+  private void parseResourceAnimatedVectorDrawable(
+      Element element,
+      Map<TypeElement, BindingClass> targetClassMap,
+      Set<TypeElement> erasedTargetNames) {
+    boolean hasError = false;
+    TypeElement enclosingElement = (TypeElement) element.getEnclosingElement();
+
+    // Verify that the target type is Drawable.
+    String typeString = element.asType().toString();
+    if (!ANIMATED_VECTOR_DRAWABLE_TYPE.equals(typeString)
+        && !ANIMATED_VECTOR_DRAWABLE_COMPAT_TYPE.equals(typeString)) {
+      error(element,
+          "@%s field type must be 'AnimatedVectorDrawable' or 'AnimatedVectorDrawableCompat'. " +
+              "(%s.%s)",
+          BindAVD.class.getSimpleName(), enclosingElement.getQualifiedName(),
+          element.getSimpleName());
+      hasError = true;
+    }
+
+    // Verify common generated code restrictions.
+    hasError |= isInaccessibleViaGeneratedCode(BindAVD.class, "fields", element);
+    hasError |= isBindingInWrongPackage(BindAVD.class, element);
+
+    if (hasError) {
+      return;
+    }
+
+    // Assemble information on the field.
+    String name = element.getSimpleName().toString();
+    int id = element.getAnnotation(BindAVD.class).value();
+
+    BindingClass bindingClass = getOrCreateTargetClass(targetClassMap, enclosingElement);
+    FieldVectorDrawableBinding binding = new FieldVectorDrawableBinding(id, name, typeString, true);
+    bindingClass.addVectorDrawable(binding);
 
     erasedTargetNames.add(enclosingElement);
   }
