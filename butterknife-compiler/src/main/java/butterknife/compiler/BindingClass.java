@@ -238,7 +238,7 @@ final class BindingClass {
     }
     constructor.addCode("\n");
 
-    generateBindViewBody(constructor);
+    generateBindViewBody(constructor, false);
 
     return constructor.build();
   }
@@ -378,7 +378,7 @@ final class BindingClass {
       if (needsResources) {
         result.addCode("\n");
       }
-      generateBindViewBody(result);
+      generateBindViewBody(result, true);
       result.addCode("\n");
     }
 
@@ -424,12 +424,12 @@ final class BindingClass {
       result.addParameter(THEME, "theme");
     }
 
-    generateBindViewBody(result);
+    generateBindViewBody(result, false);
 
     return result.build();
   }
 
-  private void generateBindViewBody(MethodSpec.Builder result) {
+  private void generateBindViewBody(MethodSpec.Builder result, boolean generateThemeResInstances) {
     if (hasResourceBindings()) {
       // Aapt can change IDs out from underneath us, just suppress since all will work at runtime.
       result.addAnnotation(AnnotationSpec.builder(SuppressWarnings.class)
@@ -467,16 +467,9 @@ final class BindingClass {
         result.addCode("\n");
       }
     }
-    if (hasResourceBindings()) {
+    if (generateThemeResInstances && hasResourceBindings()) {
       if (hasResourceBindingsNeedingContext) {
         result.addStatement("$T context = finder.getContext(source)", CONTEXT);
-      }
-      if (hasResourceBindingsNeedingRes) {
-        if (hasResourceBindingsNeedingContext) {
-          result.addStatement("$T res = context.getResources()", RESOURCES);
-        } else {
-          result.addStatement("$T res = finder.getContext(source).getResources()", RESOURCES);
-        }
       }
       if (hasResourceBindingsNeedingTheme) {
         if (hasResourceBindingsNeedingContext) {
