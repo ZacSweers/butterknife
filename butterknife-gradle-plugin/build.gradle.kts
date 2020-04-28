@@ -15,6 +15,8 @@ dependencies {
   implementation("com.android.tools.build:gradle:3.6.3")
   implementation("com.squareup:javapoet:1.12.1")
   implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.3.72")
+  implementation("org.ow2.asm:asm:8.0.1")
+  implementation("org.ow2.asm:asm-util:8.0.1")
 
   testImplementation("junit:junit:4.13")
   testImplementation("com.google.truth:truth:1.0.1")
