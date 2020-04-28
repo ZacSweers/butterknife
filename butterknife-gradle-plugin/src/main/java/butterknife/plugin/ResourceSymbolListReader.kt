@@ -1,6 +1,5 @@
 package butterknife.plugin
 
-import com.squareup.javapoet.CodeBlock
 import java.io.File
 
 internal class ResourceSymbolListReader(private val builder: FinalRClassBuilder) {
@@ -24,7 +23,6 @@ internal class ResourceSymbolListReader(private val builder: FinalRClassBuilder)
       return
     }
     val name = values[2]
-    val value = CodeBlock.of("\$L", ++idValue)
-    builder.addResourceField(symbolType, name, value)
+    builder.addResourceField(symbolType, name, ++idValue)
   }
 }

@@ -11,7 +11,7 @@ import java.io.File
 
 
 @RunWith(Parameterized::class)
-class FixturesTest(val fixtureRoot: File, val name: String) {
+class FixturesTest(private val fixtureRoot: File, private val name: String) {
     @Suppress("unused") // Used by JUnit reflectively.
     @get:Rule val buildFilesRule = BuildFilesRule(fixtureRoot)
 
@@ -47,7 +47,7 @@ class FixturesTest(val fixtureRoot: File, val name: String) {
     companion object {
         @Suppress("unused") // Used by Parameterized JUnit runner reflectively.
         @Parameters(name = "{1}")
-        @JvmStatic fun parameters() = File("src/test/fixtures").listFiles()
+        @JvmStatic fun parameters() = File("src/test/fixtures").listFiles()!!
                 .filter { it.isDirectory }
                 .map { arrayOf(it, it.name) }
     }

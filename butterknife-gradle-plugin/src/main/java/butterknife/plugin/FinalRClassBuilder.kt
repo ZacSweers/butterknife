@@ -1,65 +1,97 @@
 package butterknife.plugin
 
-import com.squareup.javapoet.ClassName
-import com.squareup.javapoet.CodeBlock
-import com.squareup.javapoet.FieldSpec
-import com.squareup.javapoet.JavaFile
-import com.squareup.javapoet.TypeSpec
+import org.objectweb.asm.ClassWriter
+import org.objectweb.asm.Opcodes
+import org.objectweb.asm.Type
 import java.util.Locale
-import javax.lang.model.element.Modifier.FINAL
-import javax.lang.model.element.Modifier.PUBLIC
-import javax.lang.model.element.Modifier.STATIC
 
-
-private const val ANNOTATION_PACKAGE = "androidx.annotation"
-internal val SUPPORTED_TYPES = setOf("anim", "array", "attr", "bool", "color", "dimen",
-    "drawable", "id", "integer", "layout", "menu", "plurals", "string", "style", "styleable")
+private const val ANNOTATION_PACKAGE = "androidx/annotation"
+internal val SUPPORTED_TYPES = setOf(
+    "anim", "array", "attr", "bool", "color", "dimen",
+    "drawable", "id", "integer", "layout", "menu", "plurals", "string", "style", "styleable"
+)
 
 /**
  * Generates a class that contains all supported field names in an R file as final values.
  * Also enables adding support annotations to indicate the type of resource for every field.
  */
 class FinalRClassBuilder(
-  private val packageName: String,
-  private val className: String
+    packageName: String,
+    private val className: String
 ) {
 
-  private var resourceTypes = mutableMapOf<String, TypeSpec.Builder>()
+  private val rClassInternalName = "${packageName.replace(".", "/")}/$className"
 
-  fun build(): JavaFile {
-    val result = TypeSpec.classBuilder(className)
-        .addModifiers(PUBLIC, FINAL)
-    for (type in SUPPORTED_TYPES) {
-      resourceTypes.get(type)?.let {
-        result.addType(it.build())
-      }
+  private var resourceTypes = mutableMapOf<String, ClassWriter>()
+
+  fun build(): Map<String, ClassWriter> {
+    val cw = ClassWriter(ClassWriter.COMPUTE_FRAMES).apply {
+      visit(
+          Opcodes.V1_6,
+          Opcodes.ACC_PUBLIC + Opcodes.ACC_FINAL + Opcodes.ACC_SUPER,
+          rClassInternalName,
+          null,
+          "java/lang/Object",
+          null
+      )
+      visitPrivateConstructor()
+      visitSource("R.java", null)
     }
-    return JavaFile.builder(packageName, result.build())
-        .addFileComment("Generated code from Butter Knife gradle plugin. Do not modify!")
-        .build()
+
+    return mapOf(className to cw) + resourceTypes
   }
 
-  fun addResourceField(type: String, fieldName: String, fieldInitializer: CodeBlock) {
+  fun addResourceField(type: String, fieldName: String, fieldInitializer: Int) {
     if (type !in SUPPORTED_TYPES) {
       return
     }
-    val fieldSpecBuilder = FieldSpec.builder(Int::class.javaPrimitiveType, fieldName)
-        .addModifiers(PUBLIC, STATIC, FINAL)
-        .initializer(fieldInitializer)
 
-    fieldSpecBuilder.addAnnotation(getSupportAnnotationClass(type))
-
+    val simpleName = "$className\$$type"
     val resourceType =
-        resourceTypes.getOrPut(type) {
-          TypeSpec.classBuilder(type).addModifiers(PUBLIC, STATIC, FINAL)
+        resourceTypes.getOrPut(simpleName) {
+          val name = "$rClassInternalName\$$type"
+          ClassWriter(ClassWriter.COMPUTE_FRAMES).apply {
+            visit(
+                Opcodes.V1_6,
+                Opcodes.ACC_PUBLIC + Opcodes.ACC_FINAL + Opcodes.ACC_SUPER,
+                name,
+                null,
+                "java/lang/Object",
+                null
+            )
+            visitPrivateConstructor()
+            visitSource("R.java", null)
+            visitInnerClass(name, rClassInternalName, type, Opcodes.ACC_STATIC)
+          }
         }
-    resourceType.addField(fieldSpecBuilder.build())
+
+    resourceType.visitField(
+        Opcodes.ACC_PUBLIC + Opcodes.ACC_FINAL + Opcodes.ACC_STATIC,
+        fieldName,
+        Type.getDescriptor(Int::class.javaPrimitiveType),
+        "I",
+        fieldInitializer
+    ).apply {
+      visitAnnotation(getSupportAnnotationClass(type), true)
+    }
   }
 
-  private fun getSupportAnnotationClass(type: String): ClassName {
-    return ClassName.get(ANNOTATION_PACKAGE, type.capitalize(Locale.US) + "Res")
+  @OptIn(ExperimentalStdlibApi::class)
+  private fun getSupportAnnotationClass(type: String): String {
+    return "$ANNOTATION_PACKAGE/${type.capitalize(Locale.US)}Res"
   }
 
-  // TODO https://youtrack.jetbrains.com/issue/KT-28933
-  private fun String.capitalize(locale: Locale) = substring(0, 1).toUpperCase(locale) + substring(1)
+  private fun ClassWriter.visitPrivateConstructor() {
+    // Private empty default constructor
+    visitMethod(Opcodes.ACC_PRIVATE, "<init>", "()V", null, null).apply {
+      visitCode()
+      visitVarInsn(Opcodes.ALOAD, 0) // load "this"
+      visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
+      visitInsn(Opcodes.RETURN)
+
+      // Note that MAXS are computed, but we still have to call this at the end with throwaway values
+      visitMaxs(-1, -1)
+      visitEnd()
+    }
+  }
 }
